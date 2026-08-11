@@ -438,6 +438,17 @@ export default class bilibili extends plugin {
       const userIds = [e.user_id]
 
       if (pushType === 'start') {
+        if (roomInfo.live_status !== 1) {
+          const statusMsg = [
+            segment.image(roomInfo.cover_from_user || roomInfo.user_cover),
+            `主播: ${roomInfo.uname || '未知'}\n`,
+            `房间号: ${roomInfo.room_id || room_id}\n`,
+            `状态: 未在直播\n`,
+            `标题: ${roomInfo.title || '无'}`
+          ]
+          await Bot.pickGroup(groupId).sendMsg(statusMsg)
+          return e.reply('该直播间当前未在直播，已发送未开播状态')
+        }
         await this.sendLiveStartMessage(groupId, userIds, roomInfo, renderE)
         return e.reply('测试开播推送已发送')
       } else {
@@ -467,6 +478,8 @@ export default class bilibili extends plugin {
       const cached = await redis.get(redisKey)
       const cachedData = cached ? JSON.parse(cached) : null
       const key = `${title}-${area_v2_parent_name}-${area_v2_name}`
+
+      logger.mark(`[bililivePush] room=${room_id} live_status=${live_status} cached=${!!cached} rePush=${rePush} key=${key}`)
 
       if (live_status === 1 && (!cached || (rePush && key !== cachedData?.key))) {
         await redis.set(redisKey, JSON.stringify({ live_time: roomInfo.live_time, key }))
