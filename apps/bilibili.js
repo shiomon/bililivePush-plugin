@@ -459,7 +459,6 @@ export default class bilibili extends plugin {
       const cachedData = cached ? JSON.parse(cached) : null
       const key = `${title}-${area_v2_parent_name}-${area_v2_name}`
 
-      logger.mark(`[bililivePush] room=${room_id} live_status=${live_status} cached=${!!cached} rePush=${rePush} key=${key}`)
 
       if (live_status === 1 && (!cached || (rePush && key !== cachedData?.key))) {
         await redis.set(redisKey, JSON.stringify({ live_time: roomInfo.live_time, key }))
