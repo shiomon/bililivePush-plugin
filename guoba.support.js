@@ -34,11 +34,7 @@ export function supportGuoba() {
         bottomHelpMessage: '使用合并转发推送消息',
         component: "Switch"
       }, {
-        field: 'user.htmlTemplate',
-        label: '使用HTML模板',
-        bottomHelpMessage: '使用HTML模板渲染推送消息（需要支持runtime.render）',
-        component: "Switch"
-      }, {
+
         field: 'rePush',
         label: '改标题二次推送',
         bottomHelpMessage: '当直播间标题被更改时，再次推送一遍',

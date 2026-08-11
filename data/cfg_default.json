@@ -2,8 +2,7 @@
 	"user": {
 		"sleep": 2,
 		"endPush": true,
-		"forward": false,
-		"htmlTemplate": false
+		"forward": false
 	},
 	"rePush": false,
 	"subscribePermission": "admin",
