@@ -294,21 +294,9 @@ export default class bilibili extends plugin {
   }
 
   async sendLiveStartMessage(groupId, userIds, roomInfo, renderE) {
-    const { room_id, cover_from_user, uname, title, uid, online, live_time, area_v2_parent_name, area_v2_name, face } = roomInfo
+    const { room_id, cover_from_user, uname, title, uid, online, live_time, area_v2_parent_name, area_v2_name } = roomInfo
     const userMentions = userIds.filter(item => item != 99999).map(item => segment.at(item == 0 ? 'all' : item))
-
     const coverImage = cover_from_user || roomInfo.user_cover
-    const templateData = {
-      room_id, cover_from_user: coverImage, uname, title, uid, online,
-      live_time: moment(live_time).format('YYYY-MM-DD HH:mm:ss'),
-      area_v2_parent_name, area_v2_name, face
-    }
-    const htmlMessage = await this._processHtmlTemplate('template/live_start', templateData, renderE, userMentions)
-    if (htmlMessage) {
-      htmlMessage.push(`\n直播间地址: https://live.bilibili.com/${room_id}`)
-      Bot.pickGroup(groupId).sendMsg(htmlMessage)
-      return
-    }
 
     const message = [
       ...userMentions,
@@ -331,15 +319,7 @@ export default class bilibili extends plugin {
 
   async sendLiveEndMessage(groupId, roomInfo, liveDuration, renderE) {
     const { cover_from_user, user_cover, room_id } = roomInfo
-
     const coverImage = cover_from_user || user_cover
-    const templateData = { cover_from_user: coverImage, liveDuration }
-    const htmlMessage = await this._processHtmlTemplate('template/live_end', templateData, renderE)
-    if (htmlMessage) {
-      htmlMessage.push(`\n直播间地址: https://live.bilibili.com/${room_id}`)
-      Bot.pickGroup(groupId).sendMsg(htmlMessage)
-      return
-    }
 
     const message = [
       ...(coverImage ? [segment.image(coverImage)] : []),

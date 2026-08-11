@@ -1,9 +1,9 @@
 {
 	"user": {
-		"sleep": 0,
+		"sleep": 2,
 		"endPush": true,
 		"forward": false,
-		"htmlTemplate": true
+		"htmlTemplate": false
 	},
 	"rePush": false,
 	"subscribePermission": "admin",
