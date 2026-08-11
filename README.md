@@ -1,12 +1,12 @@
 ## bililivePush-plugin
 修改版本
-### 安装
+### 根目录安装
+国内环境 
 ```
-国内环境
 git clone --depth=1 https://gh-proxy.com/https://github.com/shiomon/bililivePush-plugin.git ./plugins/bililivePush-plugin
 ```
-```
 国外环境
+```
 git clone --depth=1 https://github.com/shiomon/bililivePush-plugin.git ./plugins/bililivePush-plugin
 ```
 
