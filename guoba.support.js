@@ -34,10 +34,35 @@ export function supportGuoba() {
         bottomHelpMessage: '使用合并转发推送消息',
         component: "Switch"
       }, {
+        field: 'user.htmlTemplate',
+        label: '使用HTML模板',
+        bottomHelpMessage: '使用HTML模板渲染推送消息（需要支持runtime.render）',
+        component: "Switch"
+      }, {
         field: 'rePush',
         label: '改标题二次推送',
         bottomHelpMessage: '当直播间标题被更改时，再次推送一遍',
         component: "Switch"
+      }, {
+        field: 'subscribePermission',
+        label: '订阅权限',
+        bottomHelpMessage: 'all=全员可订阅, admin=管理员及以上(默认), master=仅Bot主人',
+        component: "Select",
+        componentProps: {
+          options: [
+            { label: "全员", value: "all" },
+            { label: "管理员及以上", value: "admin" },
+            { label: "仅Bot主人", value: "master" }
+          ]
+        }
+      }, {
+        field: 'trigger',
+        label: '命令前缀',
+        bottomHelpMessage: '自定义命令前缀，空值使用默认(#)，修改后需重启生效',
+        component: "Input",
+        componentProps: {
+          placeholder: "如：xx，则指令变为 xx订阅UP123"
+        }
       }],
       getConfigData() {
         return Cfg.getAll()

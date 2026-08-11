@@ -21,7 +21,7 @@ export const helpCfg = {
 }
 
 export const helpList = [{
-  group: '"[]"内为必填项,"{}"内为可选项,"|"表选择'
+  group: '"[]"内为必填项,"{}"内为可填项,"|"表选择'
 }, {
   group: '订阅命令',
   list: [{
@@ -46,14 +46,39 @@ export const helpList = [{
     },
     {
       icon: 75,
-      title: '#[本群|我的]订阅列表',
-      desc: '如题'
+      title: '#订阅列表',
+      desc: '查看本群订阅'
+    },
+    {
+      icon: 75,
+      title: '#我的订阅列表',
+      desc: '查看自己订阅'
+    },
+    {
+      icon: 75,
+      title: '#取消全部订阅',
+      desc: '管理员清空本群订阅'
     }]
 }, {
-  group: '管理命令，仅主人可用',
+  group: '管理命令',
   list: [{
       icon: 85,
-      title: '#(强制)更新推送插件',
-      desc: '更新插件本体(还没做)'
+      title: '#开播',
+      desc: '检查正在开播的订阅并@全体推送'
+    },
+    {
+      icon: 85,
+      title: '#测试推送[开播|下播] [直播间|uid:]ID',
+      desc: '测试推送效果(仅主人)'
+    },
+    {
+      icon: 85,
+      title: '#推送群友[开|关]',
+      desc: '开关群友订阅权限(仅主人)'
+    },
+    {
+      icon: 85,
+      title: '#推送前缀 [前缀|重置]',
+      desc: '设置指令前缀(仅主人)'
     }]
 }]

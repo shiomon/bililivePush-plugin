@@ -21,7 +21,7 @@ export class help extends plugin {
       event: 'message',
       priority: 100,
       rule: [{
-        reg: "^#?((B|b)ili)*(推送|(P|p)ush)(命令|帮助|菜单|help|说明|功能|指令|使用说明)$",
+        reg: "^#?(推送|(P|p)ush)(命令|帮助|菜单|help|说明|功能|指令|使用说明)$",
         fnc: 'help'
       }]
     })

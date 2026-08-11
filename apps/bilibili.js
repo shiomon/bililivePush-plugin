@@ -2,31 +2,58 @@ import Bili from '../model/bilibili.js'
 import moment from 'moment'
 import common from '../../../lib/common/common.js'
 import Cfg from '../model/Cfg.js'
+import render from '../model/render.js'
 
 export default class bilibili extends plugin {
   constructor(e) {
+    const trigger = Cfg.get('trigger', '')
+    const prefix = trigger ? `(${trigger})?` : '(#|＃)?'
     super({
       name: 'bilibili',
       priority: -114514,
       rule: [{
-          reg: '^(#|原神|绝区零|星铁)?(全体|匿名)?订阅直播间',
+          reg: `^${prefix}(全体|匿名)?订阅直播间`,
           fnc: 'setLivePush'
         },
         {
-          reg: '^(#|原神|绝区零|星铁)?(全体|匿名)?取消订阅直播间',
+          reg: `^${prefix}取消订阅直播间`,
           fnc: 'delLivePush'
         },
         {
-          reg: '^(#|原神|绝区零|星铁)?(全体|匿名)?订阅(up|UP|Up|uid:|UID:)+',
+          reg: `^${prefix}(全体|匿名)?订阅(up|UP|Up|uid:|UID:)+`,
           fnc: 'setLivePushByUid'
         },
         {
-          reg: '^(#|原神|绝区零|星铁)?(全体|匿名)?取消订阅(up|UP|Up|uid:|UID:)+',
+          reg: `^${prefix}取消订阅(up|UP|Up|uid:|UID:)+`,
           fnc: 'delLivePushByUid'
         },
         {
-          reg: '^(#|原神|绝区零|星铁)?(本?群|我的?)?订阅(列表|list)?',
+          reg: `^${prefix}取消全部订阅`,
+          fnc: 'cancelAllSubscribe'
+        },
+        {
+          reg: `^${prefix}我的订阅(列表|list)?$`,
           fnc: 'listLivePush'
+        },
+        {
+          reg: `^${prefix}订阅(列表|list)?$`,
+          fnc: 'listLivePush'
+        },
+        {
+          reg: `^${prefix}测试推送(开播|下播)?`,
+          fnc: 'testPush'
+        },
+        {
+          reg: `^${prefix}开播`,
+          fnc: 'checkLive'
+        },
+        {
+          reg: '^#推送群友(开|关)$',
+          fnc: 'setSubscribePermission'
+        },
+        {
+          reg: '^#推送前缀',
+          fnc: 'setTrigger'
         }
       ]
     })
@@ -39,38 +66,147 @@ export default class bilibili extends plugin {
       this.e = e
   }
 
+  _processUserId(e) {
+    if (/.*全体.*/.test(e.msg)) e.user_id = 0
+    if (/.*匿名.*/.test(e.msg)) e.user_id = 99999
+  }
+
+  async _initRenderE(e) {
+    if (e?.runtime) return e
+    try {
+      const Runtime = (await import('../../../lib/plugins/runtime.js')).default
+      const tempE = { reply: async () => false }
+      await Runtime.init(tempE)
+      return tempE
+    } catch (err) {
+      return null
+    }
+  }
+
+  checkSubscribePermission(e) {
+    if (e.isMaster) return true
+    const perm = Cfg.get('subscribePermission', 'admin', e)
+    if (perm === 'all') return true
+    if (perm === 'master') {
+      e.reply('暂无权限，仅Bot主人可订阅')
+      return false
+    }
+    if (perm === 'admin') {
+      if (!e.member?.is_admin) {
+        e.reply('暂无权限，仅群管理员及以上可订阅')
+        return false
+      }
+      return true
+    }
+    return true
+  }
+
+  checkAdmin(e) {
+    return e.isMaster || !!e.member?.is_admin
+  }
+
+  async setSubscribePermission(e) {
+    if (!e.isMaster) return e.reply('暂无权限，仅Bot主人可使用')
+    const enable = /开/.test(e.msg)
+    const perm = enable ? 'all' : 'admin'
+    Cfg.set('subscribePermission', perm)
+    return e.reply(`已${enable ? '开启' : '关闭'}群友订阅权限（全局，所有群生效）`)
+  }
+
+  async setTrigger(e) {
+    if (!e.isMaster) return e.reply('暂无权限，仅Bot主人可使用')
+    const value = e.msg.replace(/^#推送前缀/, '').trim()
+
+    if (!value) {
+      const trigger = Cfg.get('trigger', '')
+      return e.reply(`当前前缀：${trigger || '默认(#)'}\n设置：#推送前缀 xxx\n重置：#推送前缀 重置`)
+    }
+
+    if (value === '重置') {
+      Cfg.set('trigger', '')
+      return e.reply('前缀已重置为默认(#)，重启后生效')
+    }
+
+    Cfg.set('trigger', value)
+    return e.reply(`前缀已设为：${value}，重启后生效`)
+  }
+
+  async _processHtmlTemplate(templatePath, templateData, renderE, userMentions = []) {
+    if (!Cfg.get('user.htmlTemplate', false) || !renderE?.runtime) {
+      return null
+    }
+    try {
+      const img = await render(templatePath, templateData, { e: renderE, retType: 'base64' })
+      if (!img) {
+        logger.warn('HTML模板渲染返回空值')
+        return null
+      }
+      let imgBase64
+      if (Buffer.isBuffer(img)) {
+        imgBase64 = img.toString('base64')
+      } else if (Array.isArray(img) && img.length > 0) {
+        imgBase64 = Buffer.isBuffer(img[0]) ? img[0].toString('base64') : img[0]
+      } else if (typeof img === 'string') {
+        imgBase64 = img.startsWith('base64://') ? img.substring(9) : img
+      } else if (typeof img === 'object' && img !== null) {
+        if (img.type === 'image') {
+          const fileData = img.data?.file || img.file || img.data
+          if (fileData) {
+            if (typeof fileData === 'string' && fileData.startsWith('base64://')) {
+              imgBase64 = fileData.substring(9)
+            } else if (Buffer.isBuffer(fileData)) {
+              imgBase64 = fileData.toString('base64')
+            } else if (typeof fileData === 'string') {
+              imgBase64 = fileData
+            } else {
+              logger.error('segment.image 对象的 file 字段格式异常', typeof fileData)
+              throw new Error('图片数据格式错误：无法从 segment.image 对象中提取数据')
+            }
+          } else {
+            logger.error('segment.image 对象缺少 file 字段', Object.keys(img))
+            throw new Error('图片数据格式错误：segment.image 对象缺少 file 字段')
+          }
+        } else {
+          const fields = ['base64', 'data', 'image', 'buffer', 'file']
+          for (const field of fields) {
+            if (img[field]) {
+              const data = img[field]
+              imgBase64 = Buffer.isBuffer(data) ? data.toString('base64') : data
+              break
+            }
+          }
+          if (!imgBase64) {
+            logger.error('HTML模板渲染返回了无法处理的对象类型', Object.keys(img))
+            throw new Error('图片数据格式错误：无法从对象中提取base64数据')
+          }
+        }
+      } else {
+        logger.error('HTML模板渲染返回了意外的数据类型', typeof img, img)
+        throw new Error('图片数据格式错误')
+      }
+      return [
+        ...userMentions,
+        segment.image(`base64://${imgBase64}`)
+      ]
+    } catch (err) {
+      logger.error('HTML模板渲染失败', err)
+      return null
+    }
+  }
+
   async listLivePush(e) {
     let ret, key
     let msg = []
-    if (/.*群.*/.test(e.msg)) {
-      ret = Bili.listLiveData({
-        group_id: e.group_id
-      })
-      key = 'users'
-    } else if (/.*我.*/.test(e.msg)) {
+    if (/.*我.*/.test(e.msg)) {
       ret = Bili.listLiveData({
         user_id: e.user_id
       })
       key = 'groups'
     } else {
-      const em = (command) => Bot.em("message", {
-        self_id: this.e.self_id,
-        message_id: this.e.message_id,
-        user_id: e.user_id,
-        sender: e.sender,
-        reply: this.reply.bind(this),
-        post_type: "message",
-        message_type: 'group',
-        sub_type: 'normal',
-        message: [{
-          type: "text",
-          text: command
-        }],
-        raw_message: command,
+      ret = Bili.listLiveData({
+        group_id: e.group_id
       })
-      em("#本群订阅列表")
-      em("#我的订阅列表")
-      return true
+      key = 'users'
     }
     ret = await Bili.setRoomInfo(ret)
     for (const {
@@ -93,193 +229,258 @@ export default class bilibili extends plugin {
   }
 
   async setLivePush(e) {
-    if (/.*全体.*/.test(e.msg)) e.user_id = 0
-    if (/.*匿名.*/.test(e.msg)) e.user_id = 99999
-    let room_id = /[0-9]+/.exec(e.msg)[0]
-    if (isNaN(room_id)) {
+    if (!this.checkSubscribePermission(e)) return true
+    this._processUserId(e)
+    const room_id = /[0-9]+/.exec(e.msg)?.[0]
+    if (!room_id || isNaN(room_id)) {
       return e.reply("直播间id格式不对！请输入数字！")
     }
-    let {
-      uid,
-      face,
-      uname
-    } = await Bili.getRoomInfo(room_id)
+    const { uid, face, uname } = await Bili.getRoomInfo(room_id)
     if (!uid) {
       return e.reply("不存在该直播间！")
     }
-    let data = {
-      room_id,
-      uid,
-      group_id: e.group_id,
-      user_id: e.user_id
-    }
-    Bili.setLiveData(data)
+    Bili.setLiveData({ room_id, uid, group_id: e.group_id, user_id: e.user_id })
     return e.reply([segment.image(face), `${uname}直播间订阅成功！`])
-  }
-
-  async delLivePush(e) {
-    if (/.*全体.*/.test(e.msg)) e.user_id = 0
-    if (/.*匿名.*/.test(e.msg)) e.user_id = 99999
-    let room_id = /[0-9]+/.exec(e.msg)[0]
-    if (isNaN(room_id)) {
-      return e.reply("直播间id格式不对！请输入数字！")
-    }
-    let data = Bili.getLiveData()?.data
-    let {
-      uid
-    } = await Bili.getRoomInfo(room_id)
-    if (data[uid]?.group[e.group_id]?.filter(i => i == 99999).length == 1) e.user_id = 99999
-    if (data[uid]?.group[e.group_id]?.filter(i => i == 0).length == 1) e.user_id = 0
-    if (!data[uid]?.group[e.group_id]?.includes(e.user_id)) {
-      return e.reply("你还没有订阅该直播间！")
-    }
-
-    Bili.delLiveData({
-      uid,
-      group_id: e.group_id,
-      user_id: e.user_id
-    })
-    return e.reply("取消直播间订阅成功！")
   }
 
   async setLivePushByUid(e) {
-    if (/.*全体.*/.test(e.msg)) e.user_id = 0
-    if (/.*匿名.*/.test(e.msg)) e.user_id = 99999
-    let uid = /[0-9]+/.exec(e.msg)[0]
-    if (isNaN(uid)) {
+    if (!this.checkSubscribePermission(e)) return true
+    this._processUserId(e)
+    const uid = /[0-9]+/.exec(e.msg)?.[0]
+    if (!uid || isNaN(uid)) {
       return e.reply("uid格式不对！请输入数字！")
     }
-    let {
-      room_id,
-      face,
-      uname
-    } = await Bili.getRoomInfoByUid(uid)
+    const { room_id, face, uname } = await Bili.getRoomInfoByUid(uid)
     if (!room_id) {
       return e.reply("不存在该直播间！")
     }
-    let data = {
-      room_id,
-      uid,
-      group_id: e.group_id,
-      user_id: e.user_id
-    }
-    Bili.setLiveData(data)
+    Bili.setLiveData({ room_id, uid, group_id: e.group_id, user_id: e.user_id })
     return e.reply([segment.image(face), `${uname}直播间订阅成功！`])
   }
 
-  async delLivePushByUid(e) {
-    if (/.*全体.*/.test(e.msg)) e.user_id = 0
-    if (/.*匿名.*/.test(e.msg)) e.user_id = 99999
-    let uid = /[0-9]+/.exec(e.msg)[0]
-    if (isNaN(uid)) {
-      return e.reply("uid格式不对！请输入数字！")
-    }
-    let data = Bili.getLiveData()?.data
-    if (data[uid]?.group[e.group_id]?.filter(i => i == 99999).length == 1) e.user_id = 99999
-    if (data[uid]?.group[e.group_id]?.filter(i => i == 0).length == 1) e.user_id = 0
-    if (!data[uid]?.group[e.group_id]?.includes(e.user_id)) {
-      return e.reply("你还没有订阅该直播间！")
+  async _delSubscription(e, uid) {
+    if (!uid) return e.reply("不存在该直播间！")
+    const data = Bili.getLiveData()?.data || {}
+    const group = data[uid]?.group?.[e.group_id]
+    if (!group?.length) return e.reply("本群还没有订阅该直播间！")
+
+    if (this.checkAdmin(e)) {
+      Bili.delLiveDataAll({ uid, group_id: e.group_id })
+      return e.reply("取消直播间订阅成功！")
     }
 
-    Bili.delLiveData({
-      uid,
-      group_id: e.group_id,
-      user_id: e.user_id
-    })
+    if (!group.includes(e.user_id)) {
+      return e.reply("你还没有订阅该直播间！")
+    }
+    Bili.delLiveData({ uid, group_id: e.group_id, user_id: e.user_id })
     return e.reply("取消直播间订阅成功！")
   }
 
-  async livepush(e) {
-    let liveData = Object.values(Bili.getLiveData()?.data)
-    liveData = await Bili.setRoomInfo(liveData)
+  async delLivePush(e) {
+    const room_id = /[0-9]+/.exec(e.msg)?.[0]
+    if (!room_id || isNaN(room_id)) {
+      return e.reply("直播间id格式不对！请输入数字！")
+    }
+    const { uid } = await Bili.getRoomInfo(room_id)
+    return this._delSubscription(e, uid)
+  }
 
-    const sendLiveStartMessage = async (groupId, userIds, roomInfo, e) => {
-      const {
-        room_id,
-        cover_from_user,
-        uname,
-        title,
-        uid,
-        online,
-        live_time,
-        area_v2_parent_name,
-        area_v2_name
-      } = roomInfo
-      const userMentions = userIds.filter(item => item != 99999).map(item => segment.at(item == 0 ? 'all' : item))
-      const message = [
-        ...userMentions,
-        segment.image(cover_from_user),
-        `昵称: ${uname}\n`,
-        `用户uid: ${uid}\n`,
-        `标题: ${title}\n`,
-        `分区: ${area_v2_parent_name}-${area_v2_name}\n`,
-        `历史人次: ${online}\n`,
-        `开播时间: ${moment(live_time).format('YYYY-MM-DD HH:mm:ss')}\n`,
-        `直播间地址: https://live.bilibili.com/${room_id}`
-      ]
-      if (Cfg.get('user.forward', false)) {
-        Bot.pickGroup(Number(groupId)).sendMsg(await common.makeForwardMsg(e, [message]))
-        Bot.pickGroup(Number(groupId)).sendMsg(userMentions)
-      } else Bot.pickGroup(Number(groupId)).sendMsg(message)
+  async delLivePushByUid(e) {
+    const uid = /[0-9]+/.exec(e.msg)?.[0]
+    if (!uid || isNaN(uid)) {
+      return e.reply("uid格式不对！请输入数字！")
+    }
+    return this._delSubscription(e, uid)
+  }
+
+  async sendLiveStartMessage(groupId, userIds, roomInfo, renderE) {
+    const { room_id, cover_from_user, uname, title, uid, online, live_time, area_v2_parent_name, area_v2_name, face } = roomInfo
+    const userMentions = userIds.filter(item => item != 99999).map(item => segment.at(item == 0 ? 'all' : item))
+
+    const coverImage = cover_from_user || roomInfo.user_cover
+    const templateData = {
+      room_id, cover_from_user: coverImage, uname, title, uid, online,
+      live_time: moment(live_time).format('YYYY-MM-DD HH:mm:ss'),
+      area_v2_parent_name, area_v2_name, face
+    }
+    const htmlMessage = await this._processHtmlTemplate('template/live_start', templateData, renderE, userMentions)
+    if (htmlMessage) {
+      htmlMessage.push(`\n直播间地址: https://live.bilibili.com/${room_id}`)
+      Bot.pickGroup(groupId).sendMsg(htmlMessage)
+      return
     }
 
-    const sendLiveEndMessage = async (groupId, roomInfo, liveDuration) => {
-      const {
-        cover_from_user
-      } = roomInfo
-      const message = [
-        segment.image(cover_from_user),
-        '主播下播la~~~~\n',
-        `本次直播时长: ${liveDuration}`
-      ]
-      Bot.pickGroup(Number(groupId)).sendMsg(message)
+    const message = [
+      ...userMentions,
+      ...(coverImage ? [segment.image(coverImage)] : []),
+      `昵称: ${uname}\n`,
+      `用户uid: ${uid}\n`,
+      `标题: ${title}\n`,
+      `分区: ${area_v2_parent_name}-${area_v2_name}\n`,
+      `历史人次: ${online}\n`,
+      `开播时间: ${moment(live_time).format('YYYY-MM-DD HH:mm:ss')}\n`,
+      `直播间地址: https://live.bilibili.com/${room_id}`
+    ]
+    if (Cfg.get('user.forward', false)) {
+      Bot.pickGroup(groupId).sendMsg(await common.makeForwardMsg(renderE, [message]))
+      Bot.pickGroup(groupId).sendMsg(userMentions)
+    } else {
+      Bot.pickGroup(groupId).sendMsg(message)
+    }
+  }
+
+  async sendLiveEndMessage(groupId, roomInfo, liveDuration, renderE) {
+    const { cover_from_user, user_cover, room_id } = roomInfo
+
+    const coverImage = cover_from_user || user_cover
+    const templateData = { cover_from_user: coverImage, liveDuration }
+    const htmlMessage = await this._processHtmlTemplate('template/live_end', templateData, renderE)
+    if (htmlMessage) {
+      htmlMessage.push(`\n直播间地址: https://live.bilibili.com/${room_id}`)
+      Bot.pickGroup(groupId).sendMsg(htmlMessage)
+      return
     }
 
-    const msleep = () => {
-      return new Promise(resolve => setTimeout(resolve, Cfg.get('user.sleep', 0) * 1000))
-    }
-    
-    const rePush = Cfg.get('rePush', false)
+    const message = [
+      ...(coverImage ? [segment.image(coverImage)] : []),
+      '主播下播la~~~~\n',
+      `本次直播时长: ${liveDuration}`
+    ]
+    Bot.pickGroup(groupId).sendMsg(message)
+  }
 
-    for (const {
-        group,
-        ...roomInfo
-      } of liveData) {
+  async cancelAllSubscribe(e) {
+    if (!this.checkAdmin(e)) {
+      return e.reply('暂无权限，仅管理员及以上可使用')
+    }
+    const data = Bili.getLiveData()?.data || {}
+    let count = 0
+    for (const uid of Object.keys(data)) {
+      if (data[uid]?.group?.[e.group_id]) {
+        Bili.delLiveDataAll({ uid, group_id: e.group_id })
+        count++
+      }
+    }
+    return e.reply(count ? `已取消本群全部订阅（共${count}个直播间）` : '本群没有任何订阅')
+  }
+
+  async checkLive(e) {
+    if (!this.checkAdmin(e)) {
+      return e.reply('暂无权限，仅管理员及以上可使用')
+    }
+    const allData = Bili.getLiveData()?.data || {}
+    const subscriptions = Object.values(allData)
+    if (!subscriptions.length) return e.reply('当前没有任何订阅')
+    const liveData = await Bili.setRoomInfo(subscriptions)
+    const renderE = await this._initRenderE(e)
+    let count = 0
+
+    for (const { group, ...roomInfo } of liveData) {
+      if (!group?.[e.group_id]) continue
       roomInfo.live_time *= 1000
-      const {
-        room_id,
-        live_status,
-        title,
-        area_v2_parent_name,
-        area_v2_name
-      } = roomInfo
+      if (roomInfo.live_status === 1) {
+        await this.sendLiveStartMessage(e.group_id, [0], roomInfo, renderE)
+        count++
+      }
+    }
+
+    if (!count) return e.reply('当前没有正在开播的订阅直播间')
+    return e.reply(`已推送 ${count} 个正在开播的直播间`)
+  }
+
+  async testPush(e) {
+    if (!e.isMaster) {
+      return e.reply('暂无权限，仅Bot主人可使用测试推送')
+    }
+    if (!e.group_id) {
+      return e.reply('测试推送需在群聊中使用，以便确认推送效果')
+    }
+    const msg = e.msg.trim()
+    const pushType = msg.includes('下播') ? 'end' : 'start'
+
+    const roomIdMatch = /(?:直播间|room|房间|room_id)[：:_]*(\d+)/i.exec(msg)
+    const uidMatch = /(?:uid|up)[：:]*(\d+)/i.exec(msg)
+    let room_id = roomIdMatch?.[1]
+    let uid = uidMatch?.[1]
+
+    if (!room_id && !uid) {
+      return e.reply('请指定要测试的房间ID或UID，格式：\n#测试推送开播 直播间123456\n#测试推送下播 uid:123456')
+    }
+
+    try {
+      const basicInfo = room_id ? await Bili.getRoomInfo(room_id) : await Bili.getRoomInfoByUid(uid)
+      if (!basicInfo || (!basicInfo.uid && !uid)) {
+        return e.reply(`获取房间信息失败，${room_id ? `房间ID: ${room_id}` : `UID: ${uid}`}`)
+      }
+      const targetUid = uid || basicInfo.uid
+      const fullInfo = await Bili.BApi.getRoomInfobyUids([targetUid])
+      let roomInfo
+      if (fullInfo?.[targetUid]) {
+        roomInfo = {
+          ...basicInfo,
+          ...fullInfo[targetUid],
+          cover_from_user: fullInfo[targetUid].cover_from_user || basicInfo.user_cover,
+          user_cover: basicInfo.user_cover || fullInfo[targetUid].cover_from_user
+        }
+      } else {
+        roomInfo = basicInfo
+      }
+
+      if (!roomInfo.cover_from_user && roomInfo.user_cover) {
+        roomInfo.cover_from_user = roomInfo.user_cover
+      }
+      roomInfo.live_time = roomInfo.live_time || Date.now()
+      roomInfo.area_v2_parent_name = roomInfo.area_v2_parent_name || '测试分区'
+      roomInfo.area_v2_name = roomInfo.area_v2_name || '测试子分区'
+
+      const renderE = await this._initRenderE(e)
+      const groupId = e.group_id
+      const userIds = [e.user_id]
+
+      if (pushType === 'start') {
+        await this.sendLiveStartMessage(groupId, userIds, roomInfo, renderE)
+        return e.reply('测试开播推送已发送')
+      } else {
+        await this.sendLiveEndMessage(groupId, roomInfo, '1小时30分钟', renderE)
+        return e.reply('测试下播推送已发送')
+      }
+    } catch (err) {
+      logger.error('测试推送失败', err)
+      return e.reply(`测试推送失败: ${err.message}`)
+    }
+  }
+
+  async livepush(e) {
+    const allData = Bili.getLiveData()?.data || {}
+    const subscriptions = Object.values(allData)
+    if (!subscriptions.length) return
+    const liveData = await Bili.setRoomInfo(subscriptions)
+    const renderE = await this._initRenderE(e)
+    const sleep = Cfg.get('user.sleep', 0) * 1000
+    const rePush = Cfg.get('rePush', false)
+    const msleep = () => sleep > 0 ? new Promise(resolve => setTimeout(resolve, sleep)) : Promise.resolve()
+
+    for (const { group, ...roomInfo } of liveData) {
+      roomInfo.live_time *= 1000
+      const { room_id, live_status, title, area_v2_parent_name, area_v2_name } = roomInfo
       const redisKey = `bililive_${room_id}`
-      const data = await redis.get(redisKey)
+      const cached = await redis.get(redisKey)
+      const cachedData = cached ? JSON.parse(cached) : null
       const key = `${title}-${area_v2_parent_name}-${area_v2_name}`
 
-      if (live_status === 1 && (!data || (rePush && key !== data.key))) {
-        const {
-          live_time
-        } = roomInfo
-        redis.set(redisKey, JSON.stringify({
-          live_time,
-          key
-        }))
-
+      if (live_status === 1 && (!cached || (rePush && key !== cachedData?.key))) {
+        await redis.set(redisKey, JSON.stringify({ live_time: roomInfo.live_time, key }))
         for (const [groupId, userIds] of Object.entries(group)) {
-          sendLiveStartMessage(groupId, userIds, roomInfo, e)
+          await this.sendLiveStartMessage(groupId, userIds, roomInfo, renderE)
           await msleep()
         }
-      } else if (live_status != 1 && data) {
-        redis.del(redisKey)
-        if (!Cfg.get('user.endPush', true)) return
-
-        const {
-          live_time
-        } = JSON.parse(data)
+      } else if (live_status != 1 && cached) {
+        await redis.del(redisKey)
+        if (!Cfg.get('user.endPush', true)) continue
+        const { live_time } = cachedData
         const liveDuration = this.getDealTime(moment(live_time), moment())
         for (const [groupId] of Object.entries(group)) {
-          sendLiveEndMessage(groupId, roomInfo, liveDuration)
+          await this.sendLiveEndMessage(groupId, roomInfo, liveDuration, renderE)
           await msleep()
         }
       }

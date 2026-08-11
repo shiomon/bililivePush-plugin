@@ -12,7 +12,8 @@ class Bili {
 
   setLiveData(data) {
     const fullData = this.getLiveData()
-    const livedata = fullData?.data
+    if (!fullData.data) fullData.data = {}
+    const livedata = fullData.data
     const {
       room_id,
       uid,
@@ -39,11 +40,13 @@ class Bili {
   delLiveData(data) {
     const fullData = this.getLiveData()
     const livedata = fullData?.data
+    if (!livedata) return
     const {
       uid,
       group_id,
       user_id
     } = data
+    if (!livedata[uid]) return
     const group = livedata[uid].group
     if (group[group_id]) {
       group[group_id] = group[group_id].filter(id => id !== user_id)
@@ -58,16 +61,35 @@ class Bili {
     Data.writeJSON('bilibili/live', fullData)
   }
 
+  delLiveDataAll(data) {
+    const fullData = this.getLiveData()
+    const livedata = fullData?.data
+    if (!livedata) return
+    const {
+      uid,
+      group_id
+    } = data
+    if (!livedata[uid]) return
+    if (livedata[uid].group?.[group_id]) {
+      delete livedata[uid].group[group_id]
+    }
+    if (Object.keys(livedata[uid]?.group || {}).length === 0) {
+      delete livedata[uid]
+    }
+    fullData.data = livedata
+    Data.writeJSON('bilibili/live', fullData)
+  }
+
   listLiveData(data) {
     const {
       group_id,
       user_id
     } = data
     const byGroup = (group_id) => {
-      const livedata = this.getLiveData()?.data
+      const livedata = this.getLiveData()?.data || {}
       const result = []
       for (const {room_id, uid, group} of Object.values(livedata)) {
-        if (group[group_id]) {
+        if (group?.[group_id]) {
           result.push({
             room_id,
             uid,
@@ -78,7 +100,7 @@ class Bili {
       return result
     }
     const byUser = (user_id) => {
-      const livedata = this.getLiveData()?.data
+      const livedata = this.getLiveData()?.data || {}
       const result = []
       for (const {room_id, uid, group} of Object.values(livedata)) {
         if (group) {

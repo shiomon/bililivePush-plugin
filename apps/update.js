@@ -19,10 +19,7 @@ export class update extends plugin {
         {
           reg: `^#*(推送|${pluginName})(插件)?(强制)?更新|^#*(强制)?更新(推送|${pluginName})(插件)?`,
           fnc: "update"
-        },
-        {
-          reg: `^#?(推送|${pluginName})(插件)?更新日志`,
-          fnc: "update_log"
+
         }
       ]
     })
@@ -40,14 +37,4 @@ export class update extends plugin {
     return up.update()
   }
 
-  async update_log() {
-    let Update_Plugin = new Update()
-    Update_Plugin.e = this.e
-    Update_Plugin.reply = this.reply
-
-    if (Update_Plugin.getPlugin(pluginName)) {
-      this.e.reply(await Update_Plugin.getLog(pluginName))
-    }
-    return true
-  }
 }
