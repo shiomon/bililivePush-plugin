@@ -1,5 +1,5 @@
 ## bililivePush-plugin
-修改版本
+修改版本，兼容QQbot,官机。
 ### 根目录安装
 国内环境 
 ```
