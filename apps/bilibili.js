@@ -63,8 +63,9 @@ export default class bilibili extends plugin {
   }
 
   _processUserId(e) {
-    if (/.*全体.*/.test(e.msg)) e.user_id = 0
-    if (/.*匿名.*/.test(e.msg)) e.user_id = 99999
+    if (/.*全体.*/.test(e.msg)) return 0
+    if (/.*匿名.*/.test(e.msg)) return 99999
+    return e.user_id
   }
 
   async _initRenderE(e) {
@@ -228,7 +229,7 @@ export default class bilibili extends plugin {
   async setLivePush(e) {
     if (!this.checkSubscribePermission(e)) return true
     if (/.*全体.*/.test(e.msg) && !this.checkAdmin(e)) return e.reply('全体订阅仅管理员及以上可使用')
-    this._processUserId(e)
+    const user_id = this._processUserId(e)
     const room_id = /[0-9]+/.exec(e.msg)?.[0]
     if (!room_id || isNaN(room_id)) {
       return e.reply("直播间id格式不对！请输入数字！")
@@ -238,7 +239,7 @@ export default class bilibili extends plugin {
       if (!uid) {
         return e.reply("不存在该直播间！")
       }
-      Bili.setLiveData({ room_id, uid, group_id: e.group_id, user_id: e.user_id })
+      Bili.setLiveData({ room_id, uid, group_id: e.group_id, user_id })
       return e.reply([segment.image(face), `${uname}直播间订阅成功！`])
     } catch (err) {
       logger.error('[bililivePush-plugin] ' + err.message)
@@ -249,7 +250,7 @@ export default class bilibili extends plugin {
   async setLivePushByUid(e) {
     if (!this.checkSubscribePermission(e)) return true
     if (/.*全体.*/.test(e.msg) && !this.checkAdmin(e)) return e.reply('全体订阅仅管理员及以上可使用')
-    this._processUserId(e)
+    const user_id = this._processUserId(e)
     const id = /[0-9]+/.exec(e.msg)?.[0]
     if (!id || isNaN(id)) {
       return e.reply("格式不对！请输入数字！")
@@ -275,7 +276,7 @@ export default class bilibili extends plugin {
     if (!room_id) {
       return e.reply("不存在该直播间！")
     }
-    Bili.setLiveData({ room_id, uid, group_id: e.group_id, user_id: e.user_id })
+    Bili.setLiveData({ room_id, uid, group_id: e.group_id, user_id })
     return e.reply([segment.image(face), `${uname}直播间订阅成功！`])
   }
 
