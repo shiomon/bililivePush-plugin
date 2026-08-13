@@ -129,6 +129,7 @@ class Bili {
   async setRoomInfo(items) {
     const uids = items.map(item => item.uid)
     const ret = await BApi.getRoomInfobyUids(uids)
+    if (!ret) logger.warn('[bililivePush-plugin] getRoomInfobyUids 返回空数据，uids: ' + uids.join(','))
     return items.map(item => {
       const data = ret?.[item.uid]
       if (!data) return

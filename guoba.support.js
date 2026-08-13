@@ -42,7 +42,7 @@ export function supportGuoba() {
       }, {
         field: 'subscribePermission',
         label: '订阅权限',
-        bottomHelpMessage: 'all=全员可订阅, admin=管理员及以上(默认), master=仅Bot主人',
+        bottomHelpMessage: 'all=全员可订阅(默认), admin=管理员及以上, master=仅Bot主人',
         component: "Select",
         componentProps: {
           options: [

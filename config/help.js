@@ -26,23 +26,18 @@ export const helpList = [{
   group: '订阅命令',
   list: [{
     icon: 71,
-    title: '#[订阅|取消订阅]UP[UP的uid]',
-    desc: '如题(一般用这个)'
+    title: '#[全体|匿名]订阅UP[UID]',
+    desc: '按UID订阅(全体需管理员)'
   },
     {
       icon: 71,
-      title: '#[订阅|取消订阅]直播间[直播间room_id]',
-      desc: '如题'
+      title: '#[全体|匿名]订阅直播间[房间号]',
+      desc: '按房间号订阅(全体需管理员)'
     },
     {
       icon: 74,
       title: 'Tips',
-      desc: '如需艾特全体，指令前加"全体"二字'
-    },
-    {
-      icon: 74,
-      title: 'Tips',
-      desc: '如需不需艾特自己，指令前加"匿名"二字'
+      desc: '全体: @全体成员(需管理员) 匿名: 不@自己'
     },
     {
       icon: 75,
@@ -51,7 +46,7 @@ export const helpList = [{
     },
     {
       icon: 75,
-      title: '#我的订阅列表',
+      title: '#我的订阅',
       desc: '查看自己订阅'
     },
     {
@@ -64,7 +59,7 @@ export const helpList = [{
   list: [{
       icon: 85,
       title: '#开播',
-      desc: '检查正在开播的订阅并@全体推送'
+      desc: '检查正在开播的订阅并推送'
     },
     {
       icon: 85,

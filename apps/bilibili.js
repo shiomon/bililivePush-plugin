@@ -2,7 +2,7 @@ import Bili from '../model/bilibili.js'
 import moment from 'moment'
 import common from '../../../lib/common/common.js'
 import Cfg from '../model/Cfg.js'
-import render from '../model/render.js'
+
 
 export default class bilibili extends plugin {
   constructor(e) {
@@ -129,101 +129,44 @@ export default class bilibili extends plugin {
     return e.reply(`前缀已设为：${value}，重启后生效`)
   }
 
-  async _processHtmlTemplate(templatePath, templateData, renderE, userMentions = []) {
-    if (!Cfg.get('user.htmlTemplate', false) || !renderE?.runtime) {
-      return null
-    }
-    try {
-      const img = await render(templatePath, templateData, { e: renderE, retType: 'base64' })
-      if (!img) {
-        logger.warn('HTML模板渲染返回空值')
-        return null
-      }
-      let imgBase64
-      if (Buffer.isBuffer(img)) {
-        imgBase64 = img.toString('base64')
-      } else if (Array.isArray(img) && img.length > 0) {
-        imgBase64 = Buffer.isBuffer(img[0]) ? img[0].toString('base64') : img[0]
-      } else if (typeof img === 'string') {
-        imgBase64 = img.startsWith('base64://') ? img.substring(9) : img
-      } else if (typeof img === 'object' && img !== null) {
-        if (img.type === 'image') {
-          const fileData = img.data?.file || img.file || img.data
-          if (fileData) {
-            if (typeof fileData === 'string' && fileData.startsWith('base64://')) {
-              imgBase64 = fileData.substring(9)
-            } else if (Buffer.isBuffer(fileData)) {
-              imgBase64 = fileData.toString('base64')
-            } else if (typeof fileData === 'string') {
-              imgBase64 = fileData
-            } else {
-              logger.error('segment.image 对象的 file 字段格式异常', typeof fileData)
-              throw new Error('图片数据格式错误：无法从 segment.image 对象中提取数据')
-            }
-          } else {
-            logger.error('segment.image 对象缺少 file 字段', Object.keys(img))
-            throw new Error('图片数据格式错误：segment.image 对象缺少 file 字段')
-          }
-        } else {
-          const fields = ['base64', 'data', 'image', 'buffer', 'file']
-          for (const field of fields) {
-            if (img[field]) {
-              const data = img[field]
-              imgBase64 = Buffer.isBuffer(data) ? data.toString('base64') : data
-              break
-            }
-          }
-          if (!imgBase64) {
-            logger.error('HTML模板渲染返回了无法处理的对象类型', Object.keys(img))
-            throw new Error('图片数据格式错误：无法从对象中提取base64数据')
-          }
-        }
-      } else {
-        logger.error('HTML模板渲染返回了意外的数据类型', typeof img, img)
-        throw new Error('图片数据格式错误')
-      }
-      return [
-        ...userMentions,
-        segment.image(`base64://${imgBase64}`)
-      ]
-    } catch (err) {
-      logger.error('HTML模板渲染失败', err)
-      return null
-    }
-  }
 
   async listLivePush(e) {
-    let ret, key
-    let msg = []
-    if (/.*我.*/.test(e.msg)) {
-      ret = Bili.listLiveData({
-        user_id: e.user_id
-      })
-      key = 'groups'
-    } else {
-      ret = Bili.listLiveData({
-        group_id: e.group_id
-      })
-      key = 'users'
-    }
-    ret = await Bili.setRoomInfo(ret)
-    for (const {
-        uid,
-        uname,
-        face,
-        ...item
+    try {
+      let ret, key
+      let msg = []
+      if (/.*我.*/.test(e.msg)) {
+        ret = Bili.listLiveData({
+          user_id: e.user_id
+        })
+        key = 'groups'
+      } else {
+        ret = Bili.listLiveData({
+          group_id: e.group_id
+        })
+        key = 'users'
       }
-      of ret) {
-      msg.push([
-        segment.image(face),
-        `昵称: ${uname}\n`,
-        `用户uid: ${uid}\n`,
-        `订阅${key}:\n${item[key].map(item => (item == 99999) ? '匿名' : item).join('\n')}`
-      ])
+      ret = await Bili.setRoomInfo(ret)
+      for (const {
+          uid,
+          uname,
+          face,
+          ...item
+        }
+        of ret) {
+        msg.push([
+          segment.image(face),
+          `昵称: ${uname}\n`,
+          `用户uid: ${uid}\n`,
+          `订阅${key}:\n${item[key].map(item => (item == 99999) ? '匿名' : item).join('\n')}`
+        ])
+      }
+      msg = !!msg.length ? await common.makeForwardMsg(e, msg) : '无'
+      e.reply(msg)
+      return true
+    } catch (err) {
+      logger.error('[bililivePush-plugin] ' + err.message)
+      return e.reply('查询失败：' + err.message)
     }
-    msg = !!msg.length ? await common.makeForwardMsg(e, msg) : '无'
-    e.reply(msg)
-    return true
   }
 
   async setLivePush(e) {
@@ -303,8 +246,13 @@ export default class bilibili extends plugin {
     if (!room_id || isNaN(room_id)) {
       return e.reply("直播间id格式不对！请输入数字！")
     }
-    const { uid } = await Bili.getRoomInfo(room_id)
-    return this._delSubscription(e, uid)
+    try {
+      const { uid } = await Bili.getRoomInfo(room_id)
+      return this._delSubscription(e, uid)
+    } catch (err) {
+      logger.error('[bililivePush-plugin] ' + err.message)
+      return e.reply('取消订阅失败：' + err.message)
+    }
   }
 
   async delLivePushByUid(e) {
@@ -333,7 +281,7 @@ export default class bilibili extends plugin {
     ]
     if (Cfg.get('user.forward', false)) {
       Bot.pickGroup(groupId).sendMsg(await common.makeForwardMsg(renderE, [message]))
-      Bot.pickGroup(groupId).sendMsg(userMentions)
+
     } else {
       Bot.pickGroup(groupId).sendMsg(message)
     }
@@ -367,25 +315,29 @@ export default class bilibili extends plugin {
   }
 
   async checkLive(e) {
+    try {
+      const allData = Bili.getLiveData()?.data || {}
+      const subscriptions = Object.values(allData)
+      if (!subscriptions.length) return e.reply('当前没有任何订阅')
+      const liveData = await Bili.setRoomInfo(subscriptions)
+      const renderE = await this._initRenderE(e)
+      let count = 0
 
-    const allData = Bili.getLiveData()?.data || {}
-    const subscriptions = Object.values(allData)
-    if (!subscriptions.length) return e.reply('当前没有任何订阅')
-    const liveData = await Bili.setRoomInfo(subscriptions)
-    const renderE = await this._initRenderE(e)
-    let count = 0
-
-    for (const { group, ...roomInfo } of liveData) {
-      if (!group?.[e.group_id]) continue
-      roomInfo.live_time *= 1000
-      if (roomInfo.live_status === 1) {
-        await this.sendLiveStartMessage(e.group_id, [0], roomInfo, renderE)
-        count++
+      for (const { group, ...roomInfo } of liveData) {
+        if (!group?.[e.group_id]) continue
+        roomInfo.live_time *= 1000
+        if (roomInfo.live_status === 1) {
+          await this.sendLiveStartMessage(e.group_id, [0], roomInfo, renderE)
+          count++
+        }
       }
-    }
 
-    if (!count) return e.reply('当前没有正在开播的订阅直播间')
-    return e.reply(`已推送 ${count} 个正在开播的直播间`)
+      if (!count) return e.reply('当前没有正在开播的订阅直播间')
+      return e.reply(`已推送 ${count} 个正在开播的直播间`)
+    } catch (err) {
+      logger.error('[bililivePush-plugin] ' + err.message)
+      return e.reply('检查失败：' + err.message)
+    }
   }
 
   async testPush(e) {
@@ -462,40 +414,44 @@ export default class bilibili extends plugin {
   }
 
   async livepush(e) {
-    const allData = Bili.getLiveData()?.data || {}
-    const subscriptions = Object.values(allData)
-    if (!subscriptions.length) return
-    const liveData = await Bili.setRoomInfo(subscriptions)
-    const renderE = await this._initRenderE(e)
-    const sleep = Cfg.get('user.sleep', 0) * 1000
-    const rePush = Cfg.get('rePush', false)
-    const msleep = () => sleep > 0 ? new Promise(resolve => setTimeout(resolve, sleep)) : Promise.resolve()
+    try {
+      const allData = Bili.getLiveData()?.data || {}
+      const subscriptions = Object.values(allData)
+      if (!subscriptions.length) return
+      const liveData = await Bili.setRoomInfo(subscriptions)
+      const renderE = await this._initRenderE(e)
+      const sleep = Cfg.get('user.sleep', 0) * 1000
+      const rePush = Cfg.get('rePush', false)
+      const msleep = () => sleep > 0 ? new Promise(resolve => setTimeout(resolve, sleep)) : Promise.resolve()
 
-    for (const { group, ...roomInfo } of liveData) {
-      roomInfo.live_time *= 1000
-      const { room_id, live_status, title, area_v2_parent_name, area_v2_name } = roomInfo
-      const redisKey = `bililive_${room_id}`
-      const cached = await redis.get(redisKey)
-      const cachedData = cached ? JSON.parse(cached) : null
-      const key = `${title}-${area_v2_parent_name}-${area_v2_name}`
+      for (const { group, ...roomInfo } of liveData) {
+        roomInfo.live_time *= 1000
+        const { room_id, live_status, title, area_v2_parent_name, area_v2_name } = roomInfo
+        const redisKey = `bililive_${room_id}`
+        const cached = await redis.get(redisKey)
+        const cachedData = cached ? JSON.parse(cached) : null
+        const key = `${title}-${area_v2_parent_name}-${area_v2_name}`
 
 
-      if (live_status === 1 && (!cached || (rePush && key !== cachedData?.key))) {
-        await redis.set(redisKey, JSON.stringify({ live_time: roomInfo.live_time, key }))
-        for (const [groupId, userIds] of Object.entries(group)) {
-          await this.sendLiveStartMessage(groupId, userIds, roomInfo, renderE)
-          await msleep()
-        }
-      } else if (live_status != 1 && cached) {
-        await redis.del(redisKey)
-        if (!Cfg.get('user.endPush', true)) continue
-        const { live_time } = cachedData
-        const liveDuration = this.getDealTime(moment(live_time), moment())
-        for (const [groupId] of Object.entries(group)) {
-          await this.sendLiveEndMessage(groupId, roomInfo, liveDuration, renderE)
-          await msleep()
+        if (live_status === 1 && (!cached || (rePush && key !== cachedData?.key))) {
+          await redis.set(redisKey, JSON.stringify({ live_time: roomInfo.live_time, key }))
+          for (const [groupId, userIds] of Object.entries(group)) {
+            await this.sendLiveStartMessage(groupId, userIds, roomInfo, renderE)
+            await msleep()
+          }
+        } else if (live_status != 1 && cached) {
+          await redis.del(redisKey)
+          if (!Cfg.get('user.endPush', true)) continue
+          const { live_time } = cachedData
+          const liveDuration = this.getDealTime(moment(live_time), moment())
+          for (const [groupId] of Object.entries(group)) {
+            await this.sendLiveEndMessage(groupId, roomInfo, liveDuration, renderE)
+            await msleep()
+          }
         }
       }
+    } catch (err) {
+      logger.error('[bililivePush-plugin] livepush error: ' + err.message)
     }
   }
 
