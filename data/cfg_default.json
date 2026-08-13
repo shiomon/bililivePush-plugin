@@ -5,6 +5,6 @@
 		"forward": false
 	},
 	"rePush": false,
-	"subscribePermission": "admin",
+	"subscribePermission": "all",
 	"trigger": ""
 }

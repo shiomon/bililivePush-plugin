@@ -137,6 +137,8 @@ class Bili {
   }
 
   async getRoomInfo(room_id) {
+    const roomData = await BApi.getRoomInfo(room_id)
+    if (!roomData) throw new Error(`获取直播间信息失败：${room_id}`)
     const {
       uid,
       online,
@@ -144,11 +146,13 @@ class Bili {
       user_cover,
       live_time,
       title
-    } = await BApi.getRoomInfo(room_id)
+    } = roomData
+    const userData = await BApi.getRoomInfobyUid(uid)
+    if (!userData) throw new Error(`获取用户信息失败：${uid}`)
     const {
       uname,
       face
-    } = await BApi.getRoomInfobyUid(uid)
+    } = userData
     return {
       uid,
       room_id,
@@ -163,18 +167,22 @@ class Bili {
   }
 
   async getRoomInfoByUid(uid) {
+    const userData = await BApi.getRoomInfobyUid(uid)
+    if (!userData) throw new Error(`获取用户信息失败：${uid}`)
     const {
       room_id,
       uname,
       face
-    } = await BApi.getRoomInfobyUid(uid)
+    } = userData
+    const roomData = await BApi.getRoomInfo(room_id)
+    if (!roomData) throw new Error(`获取直播间信息失败：${room_id}`)
     const {
       online,
       live_status,
       user_cover,
       live_time,
       title
-    } = await BApi.getRoomInfo(room_id)
+    } = roomData
     return {
       uid,
       room_id,

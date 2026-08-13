@@ -7,7 +7,7 @@ import render from '../model/render.js'
 export default class bilibili extends plugin {
   constructor(e) {
     const trigger = Cfg.get('trigger', '')
-    const prefix = trigger ? `(${trigger})?` : '(#|＃)?'
+    const prefix = trigger ? `(${trigger})` : '(#|＃)'
     super({
       name: 'bilibili',
       priority: -114514,
@@ -32,11 +32,7 @@ export default class bilibili extends plugin {
           fnc: 'cancelAllSubscribe'
         },
         {
-          reg: `^${prefix}我的订阅(列表|list)?$`,
-          fnc: 'listLivePush'
-        },
-        {
-          reg: `^${prefix}订阅(列表|list)?$`,
+          reg: `^${prefix}(我的)?订阅(列表|list)?$`,
           fnc: 'listLivePush'
         },
         {
@@ -85,7 +81,7 @@ export default class bilibili extends plugin {
 
   checkSubscribePermission(e) {
     if (e.isMaster) return true
-    const perm = Cfg.get('subscribePermission', 'admin', e)
+    const perm = Cfg.get('subscribePermission', 'all', e)
     if (perm === 'all') return true
     if (perm === 'master') {
       e.reply('暂无权限，仅Bot主人可订阅')
@@ -93,12 +89,13 @@ export default class bilibili extends plugin {
     }
     if (perm === 'admin') {
       if (!e.member?.is_admin) {
+        if (!e.member) return true
         e.reply('暂无权限，仅群管理员及以上可订阅')
         return false
       }
       return true
     }
-    return true
+    return false
   }
 
   checkAdmin(e) {
@@ -230,27 +227,51 @@ export default class bilibili extends plugin {
 
   async setLivePush(e) {
     if (!this.checkSubscribePermission(e)) return true
+    if (/.*全体.*/.test(e.msg) && !this.checkAdmin(e)) return e.reply('全体订阅仅管理员及以上可使用')
     this._processUserId(e)
     const room_id = /[0-9]+/.exec(e.msg)?.[0]
     if (!room_id || isNaN(room_id)) {
       return e.reply("直播间id格式不对！请输入数字！")
     }
-    const { uid, face, uname } = await Bili.getRoomInfo(room_id)
-    if (!uid) {
-      return e.reply("不存在该直播间！")
+    try {
+      const { uid, face, uname } = await Bili.getRoomInfo(room_id)
+      if (!uid) {
+        return e.reply("不存在该直播间！")
+      }
+      Bili.setLiveData({ room_id, uid, group_id: e.group_id, user_id: e.user_id })
+      return e.reply([segment.image(face), `${uname}直播间订阅成功！`])
+    } catch (err) {
+      logger.error('[bililivePush-plugin] ' + err.message)
+      return e.reply('订阅失败：' + err.message)
     }
-    Bili.setLiveData({ room_id, uid, group_id: e.group_id, user_id: e.user_id })
-    return e.reply([segment.image(face), `${uname}直播间订阅成功！`])
   }
 
   async setLivePushByUid(e) {
     if (!this.checkSubscribePermission(e)) return true
+    if (/.*全体.*/.test(e.msg) && !this.checkAdmin(e)) return e.reply('全体订阅仅管理员及以上可使用')
     this._processUserId(e)
-    const uid = /[0-9]+/.exec(e.msg)?.[0]
-    if (!uid || isNaN(uid)) {
-      return e.reply("uid格式不对！请输入数字！")
+    const id = /[0-9]+/.exec(e.msg)?.[0]
+    if (!id || isNaN(id)) {
+      return e.reply("格式不对！请输入数字！")
     }
-    const { room_id, face, uname } = await Bili.getRoomInfoByUid(uid)
+    let uid, room_id, face, uname
+    try {
+      const info = await Bili.getRoomInfoByUid(id)
+      uid = id
+      room_id = info.room_id
+      face = info.face
+      uname = info.uname
+    } catch {
+      try {
+        const info = await Bili.getRoomInfo(id)
+        uid = info.uid
+        room_id = id
+        face = info.face
+        uname = info.uname
+      } catch {
+        return e.reply(`查询失败：${id} 既不是有效的UID也不是有效的直播间号`)
+      }
+    }
     if (!room_id) {
       return e.reply("不存在该直播间！")
     }
@@ -345,9 +366,7 @@ export default class bilibili extends plugin {
   }
 
   async checkLive(e) {
-    if (!this.checkAdmin(e)) {
-      return e.reply('暂无权限，仅管理员及以上可使用')
-    }
+
     const allData = Bili.getLiveData()?.data || {}
     const subscriptions = Object.values(allData)
     if (!subscriptions.length) return e.reply('当前没有任何订阅')
